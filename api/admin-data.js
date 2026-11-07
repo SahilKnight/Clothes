@@ -12,7 +12,14 @@ export default async function handler(req, res) {
     if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
 
     if (req.method === 'GET') {
-      const { data, error } = await supabase.from('newsletter_subscribers').select('*').order('id', { ascending: false });
+      const { type } = req.query;
+      if (type === 'newsletter') {
+        const { data, error } = await supabase.from('newsletter_subscribers').select('*').order('id', { ascending: false });
+        if (error) throw error;
+        return res.status(200).json(data);
+      }
+      // default: orders
+      const { data, error } = await supabase.from('orders').select('*').order('id', { ascending: false });
       if (error) throw error;
       return res.status(200).json(data);
     }

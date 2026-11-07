@@ -22,7 +22,7 @@ export default function Account() {
 
   useEffect(() => {
     if (!session) return;
-    fetch('/api/my-orders', { headers: { Authorization: `Bearer ${session.access_token}` } })
+    fetch('/api/user?type=my-orders', { headers: { Authorization: `Bearer ${session.access_token}` } })
       .then(async r => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'Failed to load orders.');

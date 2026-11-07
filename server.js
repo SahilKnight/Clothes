@@ -8,9 +8,9 @@ const app = express();
 app.use(express.json({ limit: '20mb' }));
 
 const routes = [
-  'products', 'orders', 'newsletter', 'my-orders',
-  'admin-auth', 'admin-products', 'admin-orders', 'admin-newsletter', 'admin-upload',
-  'razorpay-order', 'razorpay-verify', 'admin-categories',
+  'products', 'orders', 'user',
+  'admin-auth', 'admin-products', 'admin-data', 'admin-upload',
+  'razorpay', 'admin-categories',
 ];
 
 for (const route of routes) {

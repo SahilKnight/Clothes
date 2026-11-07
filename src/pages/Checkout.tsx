@@ -75,7 +75,7 @@ export default function Checkout() {
 
     setSubmitting(true);
     try {
-      const orderRes = await fetch('/api/razorpay-order', {
+      const orderRes = await fetch('/api/razorpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: total }),
@@ -110,7 +110,7 @@ export default function Checkout() {
         theme: { color: '#c9a24b' },
         handler: async (response: any) => {
           try {
-            const verifyRes = await fetch('/api/razorpay-verify', {
+            const verifyRes = await fetch('/api/razorpay?action=verify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

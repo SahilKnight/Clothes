@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, X, LogOut, Package, ShoppingCart, Mail, Upload, Star, Sparkles, Tag, Image, ChevronRight } from 'lucide-react';
-import supabase from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
+import { Plus, Pencil, Trash2, X, LogOut, Package, ShoppingCart, Mail, Upload, Star, Sparkles, Tag, Image } from 'lucide-react';
 import type { Product } from '../lib/types';
 
-interface Category { id: number; name: string; slug: string; image: string; parent_id: number | null; }
+interface Category { id: number; name: string; slug: string; image: string; }
 interface OrderRow { id: number; items: any[]; total: number; name: string; email: string; address: string; created_at: string; }
 interface SubRow { id: number; email: string; created_at: string; }
 
@@ -19,11 +17,12 @@ const TABS = [
 type TabKey = typeof TABS[number]['key'];
 
 const emptyProduct = { id: 0, name: '', category: '', price: '', compare_price: '', description: '', images: [] as string[], colors: '', sizes: '', is_new: false, is_featured: false, rating: '4.5' };
-const emptyCat = { id: 0, name: '', image: '', parent_id: null as number | null };
+const emptyCat = { id: 0, name: '', image: '' };
 
 export default function AdminDashboard() {
-  const { user, session } = useAuth();
   const navigate = useNavigate();
+  const adminEmail = localStorage.getItem('admin_email') || 'Admin';
+  const adminToken = localStorage.getItem('admin_token') || '';
   const [tab, setTab] = useState<TabKey>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -40,7 +39,7 @@ export default function AdminDashboard() {
   const [formError, setFormError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'category'; id: number; name: string } | null>(null);
 
-  const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` });
+  const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` });
 
   const fetchAll = async () => {
     setLoading(true); setError('');
@@ -48,8 +47,8 @@ export default function AdminDashboard() {
       const [pr, cr, or, sr] = await Promise.all([
         fetch('/api/admin-products', { headers: authHeaders() }).then(r => r.json()),
         fetch('/api/admin-categories').then(r => r.json()),
-        fetch('/api/admin-orders', { headers: authHeaders() }).then(r => r.json()),
-        fetch('/api/admin-newsletter', { headers: authHeaders() }).then(r => r.json()),
+        fetch('/api/admin-data', { headers: authHeaders() }).then(r => r.json()),
+        fetch('/api/admin-data?type=newsletter', { headers: authHeaders() }).then(r => r.json()),
       ]);
       if (Array.isArray(pr)) setProducts(pr); else setError(pr.error || 'Failed to load products.');
       if (Array.isArray(cr)) setCategories(cr);
@@ -58,13 +57,14 @@ export default function AdminDashboard() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { if (session) fetchAll(); }, [session]);
+  useEffect(() => { fetchAll(); }, []);
 
   const uploadImage = async (file: File): Promise<string> => {
     const reader = new FileReader();
     const base64: string = await new Promise((res, rej) => {
       reader.onload = () => res((reader.result as string).split(',')[1]);
-      reader.onerror = rej; reader.readAsDataURL(file);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
     });
     const r = await fetch('/api/admin-upload', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ fileName: file.name, fileBase64: base64, contentType: file.type }) });
     const d = await r.json();
@@ -74,27 +74,45 @@ export default function AdminDashboard() {
 
   const handleProductImages = async (files: FileList) => {
     setUploading(true); setFormError('');
-    try { const urls = await Promise.all(Array.from(files).map(uploadImage)); setForm(f => ({ ...f, images: [...f.images, ...urls] })); }
-    catch (e: any) { setFormError(e.message); } finally { setUploading(false); }
+    try {
+      const urls = await Promise.all(Array.from(files).map(uploadImage));
+      setForm(f => ({ ...f, images: [...f.images, ...urls] }));
+    } catch (e: any) { setFormError(e.message); }
+    finally { setUploading(false); }
   };
 
   const handleCatImage = async (file: File) => {
     setUploading(true);
     try { const url = await uploadImage(file); setCatForm(f => ({ ...f, image: url })); }
-    catch (e: any) { setFormError(e.message); } finally { setUploading(false); }
+    catch (e: any) { setFormError(e.message); }
+    finally { setUploading(false); }
   };
 
   const saveProduct = async (e: React.FormEvent) => {
     e.preventDefault(); setFormError('');
-    if (!form.name.trim() || !form.category || !form.price || form.images.length === 0) { setFormError('Name, category, price and at least one image are required.'); return; }
+    if (!form.name.trim() || !form.category || !form.price || form.images.length === 0) {
+      setFormError('Name, category, price and at least one image are required.'); return;
+    }
     setSaving(true);
     try {
-      const payload = { id: form.id || undefined, name: form.name.trim(), category: form.category, price: Number(form.price), compare_price: form.compare_price ? Number(form.compare_price) : null, description: form.description, image: form.images[0], gallery: form.images, colors: form.colors ? form.colors.split(',').map(s => s.trim()).filter(Boolean) : [], sizes: form.sizes ? form.sizes.split(',').map(s => s.trim()).filter(Boolean) : [], is_new: form.is_new, is_featured: form.is_featured, rating: Number(form.rating) || 4.5 };
+      const payload = {
+        id: form.id || undefined,
+        name: form.name.trim(), category: form.category,
+        price: Number(form.price),
+        compare_price: form.compare_price ? Number(form.compare_price) : null,
+        description: form.description,
+        image: form.images[0], gallery: form.images,
+        colors: form.colors ? form.colors.split(',').map(s => s.trim()).filter(Boolean) : [],
+        sizes: form.sizes ? form.sizes.split(',').map(s => s.trim()).filter(Boolean) : [],
+        is_new: form.is_new, is_featured: form.is_featured,
+        rating: Number(form.rating) || 4.5,
+      };
       const r = await fetch('/api/admin-products', { method: form.id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Save failed');
       setProductModal(false); fetchAll();
-    } catch (e: any) { setFormError(e.message); } finally { setSaving(false); }
+    } catch (e: any) { setFormError(e.message); }
+    finally { setSaving(false); }
   };
 
   const saveCat = async (e: React.FormEvent) => {
@@ -106,7 +124,8 @@ export default function AdminDashboard() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Save failed');
       setCatModal(false); fetchAll();
-    } catch (e: any) { setFormError(e.message); } finally { setSaving(false); }
+    } catch (e: any) { setFormError(e.message); }
+    finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -124,11 +143,7 @@ export default function AdminDashboard() {
     setFormError(''); setProductModal(true);
   };
 
-  const openEditCat = (c: Category) => { setCatForm({ id: c.id, name: c.name, image: c.image, parent_id: c.parent_id }); setFormError(''); setCatModal(true); };
-
-  // Build hierarchical category options for product form
-  const parentCats = categories.filter(c => !c.parent_id);
-  const childCats = (pid: number) => categories.filter(c => c.parent_id === pid);
+  const openEditCat = (c: Category) => { setCatForm({ id: c.id, name: c.name, image: c.image }); setFormError(''); setCatModal(true); };
 
   const inp = 'bg-ink border border-line focus:border-gold px-4 py-3 text-sm outline-none w-full';
 
@@ -138,9 +153,9 @@ export default function AdminDashboard() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
           <div>
             <p className="text-gold uppercase tracking-[0.25em] text-xs mb-2 flex items-center gap-2"><Sparkles size={12} /> Admin Dashboard</p>
-            <h1 className="font-display text-3xl md:text-4xl">Welcome, <span className="italic text-gold-gradient">{user?.email}</span></h1>
+            <h1 className="font-display text-3xl md:text-4xl">Welcome, <span className="italic text-gold-gradient">{adminEmail}</span></h1>
           </div>
-          <button onClick={async () => { await supabase.auth.signOut(); navigate('/admin/login'); }} className="flex items-center gap-2 border border-line px-5 py-3 text-sm uppercase tracking-widest hover:border-gold hover:text-gold transition-colors w-fit">
+          <button onClick={() => { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_email'); navigate('/admin/login'); }} className="flex items-center gap-2 border border-line px-5 py-3 text-sm uppercase tracking-widest hover:border-gold hover:text-gold transition-colors w-fit">
             <LogOut size={15} /> Sign Out
           </button>
         </div>
@@ -164,11 +179,17 @@ export default function AdminDashboard() {
         ) : tab === 'products' ? (
           <div>
             <div className="flex justify-end mb-6">
-              <button onClick={() => { setForm(emptyProduct); setFormError(''); setProductModal(true); }} className="flex items-center gap-2 bg-gold text-ink px-5 py-3 text-sm uppercase tracking-widest font-semibold hover:bg-gold-bright transition-colors"><Plus size={16} /> Add Product</button>
+              <button onClick={() => { setForm(emptyProduct); setFormError(''); setProductModal(true); }} className="flex items-center gap-2 bg-gold text-ink px-5 py-3 text-sm uppercase tracking-widest font-semibold hover:bg-gold-bright transition-colors">
+                <Plus size={16} /> Add Product
+              </button>
             </div>
             <div className="overflow-x-auto border border-line">
               <table className="w-full text-sm">
-                <thead><tr className="bg-panel-light text-left text-cream-dim uppercase text-xs tracking-wider"><th className="p-4">Image</th><th className="p-4">Name</th><th className="p-4">Category</th><th className="p-4">Price</th><th className="p-4">Flags</th><th className="p-4 text-right">Actions</th></tr></thead>
+                <thead>
+                  <tr className="bg-panel-light text-left text-cream-dim uppercase text-xs tracking-wider">
+                    <th className="p-4">Image</th><th className="p-4">Name</th><th className="p-4">Category</th><th className="p-4">Price</th><th className="p-4">Flags</th><th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {products.map(p => (
                     <tr key={p.id} className="border-t border-line hover:bg-panel-light/50 transition-colors">
@@ -176,8 +197,18 @@ export default function AdminDashboard() {
                       <td className="p-4 text-cream">{p.name}</td>
                       <td className="p-4 text-cream-dim capitalize">{p.category}</td>
                       <td className="p-4 text-gold">₹{p.price}{p.compare_price ? <span className="text-cream-dim/50 line-through ml-2 text-xs">₹{p.compare_price}</span> : null}</td>
-                      <td className="p-4"><div className="flex gap-1">{p.is_new && <span className="text-[10px] bg-gold/10 text-gold px-2 py-1 rounded-full">New</span>}{p.is_featured && <span className="text-[10px] bg-gold/10 text-gold px-2 py-1 rounded-full flex items-center gap-1"><Star size={9} fill="currentColor" />Featured</span>}</div></td>
-                      <td className="p-4"><div className="flex justify-end gap-3"><button onClick={() => openEditProduct(p)} className="text-cream-dim hover:text-gold"><Pencil size={16} /></button><button onClick={() => setDeleteTarget({ type: 'product', id: p.id, name: p.name })} className="text-cream-dim hover:text-red-400"><Trash2 size={16} /></button></div></td>
+                      <td className="p-4">
+                        <div className="flex gap-1">
+                          {p.is_new && <span className="text-[10px] bg-gold/10 text-gold px-2 py-1 rounded-full">New</span>}
+                          {p.is_featured && <span className="text-[10px] bg-gold/10 text-gold px-2 py-1 rounded-full flex items-center gap-1"><Star size={9} fill="currentColor" />Featured</span>}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex justify-end gap-3">
+                          <button onClick={() => openEditProduct(p)} className="text-cream-dim hover:text-gold"><Pencil size={16} /></button>
+                          <button onClick={() => setDeleteTarget({ type: 'product', id: p.id, name: p.name })} className="text-cream-dim hover:text-red-400"><Trash2 size={16} /></button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                   {products.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-cream-dim">No products yet.</td></tr>}
@@ -187,48 +218,26 @@ export default function AdminDashboard() {
           </div>
         ) : tab === 'categories' ? (
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <p className="text-cream-dim text-sm">Parent categories are top-level (e.g. Outerwear). Sub-categories belong under a parent (e.g. Shirts under Outerwear).</p>
-              <button onClick={() => { setCatForm(emptyCat); setFormError(''); setCatModal(true); }} className="flex items-center gap-2 bg-gold text-ink px-5 py-3 text-sm uppercase tracking-widest font-semibold hover:bg-gold-bright transition-colors shrink-0 ml-4"><Plus size={16} /> Add Category</button>
+            <div className="flex justify-end mb-6">
+              <button onClick={() => { setCatForm(emptyCat); setFormError(''); setCatModal(true); }} className="flex items-center gap-2 bg-gold text-ink px-5 py-3 text-sm uppercase tracking-widest font-semibold hover:bg-gold-bright transition-colors">
+                <Plus size={16} /> Add Category
+              </button>
             </div>
-            <div className="space-y-6">
-              {parentCats.map(parent => (
-                <div key={parent.id} className="border border-line">
-                  <div className="flex items-center gap-4 p-4 bg-panel-light">
-                    <img src={parent.image} alt={parent.name} className="w-14 h-14 object-cover" />
-                    <div className="flex-1">
-                      <p className="text-cream font-medium capitalize text-lg">{parent.name}</p>
-                      <p className="text-xs text-cream-dim">{parent.slug} · Parent category</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => openEditCat(parent)} className="text-cream-dim hover:text-gold p-2"><Pencil size={15} /></button>
-                      <button onClick={() => setDeleteTarget({ type: 'category', id: parent.id, name: parent.name })} className="text-cream-dim hover:text-red-400 p-2"><Trash2 size={15} /></button>
-                    </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {categories.map(c => (
+                <div key={c.id} className="relative group border border-line overflow-hidden">
+                  <img src={c.image} alt={c.name} className="w-full aspect-[4/3] object-cover" />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                    <button onClick={() => openEditCat(c)} className="bg-gold text-ink p-2 rounded"><Pencil size={14} /></button>
+                    <button onClick={() => setDeleteTarget({ type: 'category', id: c.id, name: c.name })} className="bg-red-500 text-white p-2 rounded"><Trash2 size={14} /></button>
                   </div>
-                  {childCats(parent.id).length > 0 && (
-                    <div className="divide-y divide-line">
-                      {childCats(parent.id).map(child => (
-                        <div key={child.id} className="flex items-center gap-4 p-4 pl-10">
-                          <ChevronRight size={14} className="text-gold shrink-0" />
-                          <img src={child.image} alt={child.name} className="w-10 h-10 object-cover" />
-                          <div className="flex-1">
-                            <p className="text-cream capitalize">{child.name}</p>
-                            <p className="text-xs text-cream-dim">{child.slug}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => openEditCat(child)} className="text-cream-dim hover:text-gold p-2"><Pencil size={14} /></button>
-                            <button onClick={() => setDeleteTarget({ type: 'category', id: child.id, name: child.name })} className="text-cream-dim hover:text-red-400 p-2"><Trash2 size={14} /></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="p-3 border-t border-line">
-                    <button onClick={() => { setCatForm({ ...emptyCat, parent_id: parent.id }); setFormError(''); setCatModal(true); }} className="flex items-center gap-2 text-xs text-gold hover:text-gold-bright transition-colors"><Plus size={12} /> Add sub-category under {parent.name}</button>
+                  <div className="p-3 bg-panel">
+                    <p className="text-cream font-medium capitalize">{c.name}</p>
+                    <p className="text-xs text-cream-dim">{c.slug}</p>
                   </div>
                 </div>
               ))}
-              {parentCats.length === 0 && <p className="text-center text-cream-dim py-20">No categories yet. Add your first parent category.</p>}
+              {categories.length === 0 && <p className="col-span-4 text-center text-cream-dim py-20">No categories yet.</p>}
             </div>
           </div>
         ) : tab === 'orders' ? (
@@ -241,7 +250,14 @@ export default function AdminDashboard() {
                   <div className="text-right"><p className="text-gold text-lg">₹{o.total}</p><p className="text-xs text-cream-dim">{o.name} · {o.email}</p></div>
                 </div>
                 <p className="text-xs text-cream-dim mb-4">{o.address}</p>
-                <div className="flex flex-wrap gap-3">{(o.items || []).map((it: any, i: number) => (<div key={i} className="flex items-center gap-2 bg-panel-light px-3 py-2 text-xs text-cream-dim"><img src={it.image} alt={it.name} className="w-8 h-10 object-cover" /><span>{it.name} · {it.color}/{it.size} × {it.quantity}</span></div>))}</div>
+                <div className="flex flex-wrap gap-3">
+                  {(o.items || []).map((it: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 bg-panel-light px-3 py-2 text-xs text-cream-dim">
+                      <img src={it.image} alt={it.name} className="w-8 h-10 object-cover" />
+                      <span>{it.name} · {it.color}/{it.size} × {it.quantity}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -271,17 +287,7 @@ export default function AdminDashboard() {
                     <input placeholder="Product Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inp} />
                     <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className={inp}>
                       <option value="">Select Category</option>
-                      {parentCats.map(parent => (
-                        <optgroup key={parent.id} label={parent.name}>
-                          <option value={parent.slug}>{parent.name} (all)</option>
-                          {childCats(parent.id).map(child => (
-                            <option key={child.id} value={child.slug}>&nbsp;&nbsp;↳ {child.name}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                      {categories.filter(c => !c.parent_id && !parentCats.find(p => p.id === c.id)).map(c => (
-                        <option key={c.id} value={c.slug}>{c.name}</option>
-                      ))}
+                      {categories.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
                     </select>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-4">
@@ -306,18 +312,27 @@ export default function AdminDashboard() {
                         ))}
                       </div>
                     )}
-                    <input placeholder="Or paste image URL and press Enter" className={`${inp} mt-3`} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = (e.target as HTMLInputElement).value.trim(); if (v) { setForm(f => ({ ...f, images: [...f.images, v] })); (e.target as HTMLInputElement).value = ''; } } }} />
+                    <input placeholder="Or paste image URL and press Enter to add" className={`${inp} mt-3`}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const v = (e.target as HTMLInputElement).value.trim();
+                          if (v) { setForm(f => ({ ...f, images: [...f.images, v] })); (e.target as HTMLInputElement).value = ''; }
+                        }
+                      }} />
                   </div>
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <input placeholder="Colors, comma separated" value={form.colors} onChange={e => setForm({ ...form, colors: e.target.value })} className={inp} />
-                    <input placeholder="Sizes, comma separated" value={form.sizes} onChange={e => setForm({ ...form, sizes: e.target.value })} className={inp} />
+                    <input placeholder="Colors, comma separated (e.g. Black, Gold)" value={form.colors} onChange={e => setForm({ ...form, colors: e.target.value })} className={inp} />
+                    <input placeholder="Sizes, comma separated (e.g. S, M, L)" value={form.sizes} onChange={e => setForm({ ...form, sizes: e.target.value })} className={inp} />
                   </div>
                   <div className="flex items-center gap-6">
                     <label className="flex items-center gap-2 text-sm text-cream-dim cursor-pointer"><input type="checkbox" checked={form.is_new} onChange={e => setForm({ ...form, is_new: e.target.checked })} className="accent-yellow-600" /> Mark as New</label>
                     <label className="flex items-center gap-2 text-sm text-cream-dim cursor-pointer"><input type="checkbox" checked={form.is_featured} onChange={e => setForm({ ...form, is_featured: e.target.checked })} className="accent-yellow-600" /> Featured on Home</label>
                   </div>
                   {formError && <p className="text-red-400 text-sm">{formError}</p>}
-                  <button disabled={saving || uploading} className="w-full bg-gold text-ink py-4 uppercase tracking-widest text-sm font-semibold hover:bg-gold-bright transition-colors disabled:opacity-60">{saving ? 'Saving...' : form.id ? 'Save Changes' : 'Create Product'}</button>
+                  <button disabled={saving || uploading} className="w-full bg-gold text-ink py-4 uppercase tracking-widest text-sm font-semibold hover:bg-gold-bright transition-colors disabled:opacity-60">
+                    {saving ? 'Saving...' : form.id ? 'Save Changes' : 'Create Product'}
+                  </button>
                 </form>
               </div>
             </motion.div>
@@ -332,14 +347,9 @@ export default function AdminDashboard() {
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="fixed inset-0 z-[95] flex items-center justify-center p-4">
               <div className="bg-panel border border-line max-w-md w-full p-8 relative">
                 <button onClick={() => setCatModal(false)} className="absolute top-6 right-6 text-cream-dim hover:text-gold"><X size={20} /></button>
-                <h2 className="font-display text-2xl mb-1">{catForm.id ? 'Edit Category' : 'Add Category'}</h2>
-                <p className="text-cream-dim text-xs mb-6">Leave "Parent Category" empty to create a top-level category (e.g. Outerwear). Select a parent to create a sub-category (e.g. Shirts under Outerwear).</p>
+                <h2 className="font-display text-2xl mb-6">{catForm.id ? 'Edit Category' : 'Add Category'}</h2>
                 <form onSubmit={saveCat} className="space-y-4">
                   <input placeholder="Category Name (e.g. Shoes)" value={catForm.name} onChange={e => setCatForm({ ...catForm, name: e.target.value })} className={inp} />
-                  <select value={catForm.parent_id ?? ''} onChange={e => setCatForm({ ...catForm, parent_id: e.target.value ? Number(e.target.value) : null })} className={inp}>
-                    <option value="">No parent — top-level category</option>
-                    {parentCats.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
                   <div>
                     <p className="text-xs uppercase tracking-wider text-cream-dim mb-2">Background Image</p>
                     {catForm.image && <img src={catForm.image} alt="" className="w-full h-32 object-cover mb-3" />}
@@ -350,7 +360,9 @@ export default function AdminDashboard() {
                     <input placeholder="Or paste image URL" value={catForm.image} onChange={e => setCatForm({ ...catForm, image: e.target.value })} className={`${inp} mt-3`} />
                   </div>
                   {formError && <p className="text-red-400 text-sm">{formError}</p>}
-                  <button disabled={saving || uploading} className="w-full bg-gold text-ink py-4 uppercase tracking-widest text-sm font-semibold hover:bg-gold-bright transition-colors disabled:opacity-60">{saving ? 'Saving...' : catForm.id ? 'Save Changes' : 'Create Category'}</button>
+                  <button disabled={saving || uploading} className="w-full bg-gold text-ink py-4 uppercase tracking-widest text-sm font-semibold hover:bg-gold-bright transition-colors disabled:opacity-60">
+                    {saving ? 'Saving...' : catForm.id ? 'Save Changes' : 'Create Category'}
+                  </button>
                 </form>
               </div>
             </motion.div>
