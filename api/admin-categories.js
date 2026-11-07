@@ -1,4 +1,4 @@
-import supabase from './db-client.js';
+import supabase from '../lib/db-client.js';
 
 const ADMIN_EMAILS = ['admin@clotherapy.com'];
 

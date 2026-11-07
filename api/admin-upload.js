@@ -1,5 +1,5 @@
-import supabase from './db-client.js';
-import { requireAdmin } from './admin-guard.js';
+import supabase from '../lib/db-client.js';
+import { requireAdmin } from '../lib/admin-guard.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

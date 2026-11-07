@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import supabase from './db-client.js';
+import supabase from '../lib/db-client.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
